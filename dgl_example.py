@@ -41,7 +41,7 @@ train_neg_g = dgl.graph((train_neg_u, train_neg_v), num_nodes=g.number_of_nodes(
 test_pos_g = dgl.graph((test_pos_u, test_pos_v), num_nodes=g.number_of_nodes())
 test_neg_g = dgl.graph((test_neg_u, test_neg_v), num_nodes=g.number_of_nodes())
 
-#ENCODER ANALOGY
+# ENCODER (GraphSAGE)
 class SAGEConv(nn.Module):
     """Graph convolution module used by the GraphSAGE model.
 
@@ -75,7 +75,7 @@ class SAGEConv(nn.Module):
             h_total = torch.cat([h, h_N], dim=1)
             return self.linear(h_total)
 
-# COMPARATOR ANALOGY
+# COMPARATOR
 class DotPredictor(nn.Module):
     def forward(self, g, h):
         with g.local_scope():
@@ -86,17 +86,19 @@ class DotPredictor(nn.Module):
             # u_dot_v returns a 1-element vector for each edge so you need to squeeze it.
             return g.edata['score'][:, 0]
 
-# RELATION OPERATOR ANALOGY
-
-# DECODER ANALOGY (?)
-
 # LOSS FUNCTION
 def compute_loss(pos_score, neg_score):
     scores = torch.cat([pos_score, neg_score])
     labels = torch.cat([torch.ones(pos_score.shape[0]), torch.zeros(neg_score.shape[0])])
     return F.binary_cross_entropy_with_logits(scores, labels)
 
-# CUSTOM MODEL ANALOGY
+def compute_auc(pos_score, neg_score):
+    scores = torch.cat([pos_score, neg_score]).numpy()
+    labels = torch.cat(
+        [torch.ones(pos_score.shape[0]), torch.zeros(neg_score.shape[0])]).numpy()
+    return roc_auc_score(labels, scores)
+
+# CUSTOM MODEL
 class Model(nn.Module):
     def __init__(self, in_feats, h_feats, num_classes):
         super(Model, self).__init__()
@@ -109,25 +111,7 @@ class Model(nn.Module):
         h = self.conv2(g, h)
         return h
 
-# class GraphSAGE(nn.Module):
-#     def __init__(self, in_feats, h_feats):
-#         super(GraphSAGE, self).__init__()
-#         self.conv1 = SAGEConv(in_feats, h_feats, 'mean')
-#         self.conv2 = SAGEConv(h_feats, h_feats, 'mean')
-
-#     def forward(self, g, in_feat):
-#         h = self.conv1(g, in_feat)
-#         h = F.relu(h)
-#         h = self.conv2(g, h)
-#         return h
-
-def compute_auc(pos_score, neg_score):
-    scores = torch.cat([pos_score, neg_score]).numpy()
-    labels = torch.cat(
-        [torch.ones(pos_score.shape[0]), torch.zeros(neg_score.shape[0])]).numpy()
-    return roc_auc_score(labels, scores)
-
-# TRAINER ANALOGY
+# TRAINER
 def train(g, model):
     optimizer = torch.optim.Adam(itertools.chain(model.parameters(), pred.parameters()), lr=0.01)
 
@@ -151,6 +135,5 @@ def train(g, model):
         print('AUC', compute_auc(pos_score, neg_score))
 
 model = Model(g.ndata['feat'].shape[1], 16, dataset.num_classes)
-#model = GraphSAGE(train_g.ndata['feat'].shape[1], 16)
 pred = DotPredictor()
 train(g, model)
